@@ -1,7 +1,12 @@
 const { Client } = require("pg");
 
-// Ensure this URL is correct and matches the configuration
-let DB_URI = "postgresql:///biztime";
+let DB_URI;
+
+if (process.env.NODE_ENV !== "test") {
+  DB_URI = "postgresql:///biztime";
+} else {
+  DB_URI = "postgresql:///biztime_test";
+}
 
 let db = new Client({
   connectionString: DB_URI,

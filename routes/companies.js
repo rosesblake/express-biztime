@@ -2,6 +2,7 @@ const express = require("express");
 const ExpressError = require("../expressError");
 const router = express.Router();
 const db = require("../db");
+const slugify = require("slugify");
 
 router.get("/", async (req, res, next) => {
   try {
@@ -16,24 +17,27 @@ router.get("/:code", async (req, res, next) => {
   try {
     const { code } = req.params;
 
-    const results = await db.query("SELECT * FROM companies WHERE code = $1", [
-      code,
-    ]);
-    company = results.rows[0];
-
-    // Query for invoices associated with the company
-    const invoicesResult = await db.query(
-      "SELECT * FROM invoices WHERE comp_code = $1",
+    const companyResult = await db.query(
+      "SELECT * FROM companies WHERE code = $1",
       [code]
     );
-    const invoices = invoicesResult.rows;
+    const company = companyResult.rows[0];
+    if (!company) {
+      throw new ExpressError("Company does not exist", 404);
+    }
+
+    const industriesResult = await db.query(
+      "SELECT i.industry FROM industries AS i JOIN company_industry AS ci ON i.code = ci.industry_code WHERE ci.company_code = $1",
+      [code]
+    );
+    const industries = industriesResult.rows.map((row) => row.industry);
 
     return res.json({
       company: {
         code: company.code,
         name: company.name,
         description: company.description,
-        invoices: invoices,
+        industries: industries,
       },
     });
   } catch (e) {
@@ -43,7 +47,10 @@ router.get("/:code", async (req, res, next) => {
 
 router.post("/", async (req, res, next) => {
   try {
-    const { code, name, description } = req.body;
+    const { name, description } = req.body;
+
+    const code = slugify(name, { lower: true });
+
     const results = await db.query(
       "INSERT INTO companies (code, name, description) VALUES ($1, $2, $3) RETURNING code, name, description",
       [code, name, description]
@@ -77,15 +84,15 @@ router.put("/:code", async (req, res, next) => {
 
 router.delete("/:code", async (req, res, next) => {
   try {
-    const company = await db.query("SELECT * FROM companies WHERE code=$1", [
+    const { code } = req.params;
+
+    const company = await db.query("SELECT * FROM companies WHERE code = $1", [
       code,
     ]);
     if (!company.rows[0]) {
-      throw new ExpressError(`can't find company with code of ${code}`, 404);
+      throw new ExpressError(`Can't find company with code of ${code}`, 404);
     } else {
-      const results = db.query("DELETE FROM companies WHERE code=$1", [
-        req.params.code,
-      ]);
+      await db.query("DELETE FROM companies WHERE code = $1", [code]);
       return res.send({ status: "deleted" });
     }
   } catch (e) {
